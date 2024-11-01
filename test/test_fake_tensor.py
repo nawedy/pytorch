@@ -28,7 +28,7 @@ from torch._subclasses.fake_tensor import (
     _CacheKeyState,
     DynamicOutputShapeException,
     extract_tensor_metadata,
-    TensorCrossRefException,
+    TensorCrossRefError,
     FakeTensor,
     FakeTensorConverter,
     FakeTensorMode,
@@ -1378,7 +1378,7 @@ class FakeTensorOperatorInvariants(TestCase):
             try:
                 with torch._subclasses.CrossRefFakeMode():
                     Repro()(*args)
-            except TensorCrossRefException as e:
+            except TensorCrossRefError as e:
                 # We expect the cross ref to succed for the first output to fail
                 # for the rng state, see Note [Seed and Offset]
                 self.assertTrue("output[0]" not in str(e))

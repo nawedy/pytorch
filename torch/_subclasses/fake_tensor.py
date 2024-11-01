@@ -140,7 +140,7 @@ class UnsupportedOperatorException(RuntimeError):
 
 
 @dataclass
-class TensorCrossRefException(RuntimeError):
+class TensorCrossRefError(RuntimeError):
     reason: str
 
 
@@ -2067,15 +2067,19 @@ class FakeTensorMode(TorchDispatchMode):
                         - self.shape_env.var_to_val.keys()
                         - self.shape_env.unbacked_var_to_val.keys()
                     ):
-                        assert (
-                            self.shape_env._maybe_evaluate_static(
-                                sympy.Eq(fake.node.expr, real), compute_hint=True
+                        if self.shape_env._maybe_evaluate_static(
+                            sympy.Eq(fake.node.expr, real), compute_hint=True
+                        ) is not sympy.S.true:
+                            raise TensorCrossRefError(
+                                f"mismatch between fake value {fake} and real value {real} "
                             )
-                        ) is sympy.S.true
                 elif isinstance(
                     fake, (int, float, bool)
                 ):  # concrete value, check direct equality
-                    assert fake == real
+                    if fake != real:
+                        raise TensorCrossRefError(
+                            f"mismatch between fake value {fake} and real value {real} "
+                        )
 
             if real_out is not nil:
                 if (
@@ -2102,8 +2106,8 @@ class FakeTensorMode(TorchDispatchMode):
                         fake_out,
                         (args, kwargs),
                     )
-                except TensorCrossRefException as exc:
-                    raise TensorCrossRefException(
+                except TensorCrossRefError as exc:
+                    raise TensorCrossRefError(
                         f"Real tensor propagation found an aliasing mismatch between "
                         f"fake output {fake_out} and real output {real_out}, "
                         f" for func: {func}"
@@ -2124,8 +2128,8 @@ class FakeTensorMode(TorchDispatchMode):
                                 storage_offset=True,
                                 requires_grad=False,  # issues with FakeTensorConverter preserving requires_grad
                             )
-                        except TensorCrossRefException as exc:
-                            raise TensorCrossRefException(
+                        except TensorCrossRefError as exc:
+                            raise TensorCrossRefError(
                                 f"Real tensor propagation found a metadata mismatch between "
                                 f"fake tensor {_fake_out} and real tensor {_real_out}, "
                                 f" at output index {i}, for func: {func}"
@@ -2136,8 +2140,8 @@ class FakeTensorMode(TorchDispatchMode):
                         ):
                             try:
                                 _check_fake_real_vals(s_fake, s_real)
-                            except AssertionError as exc:
-                                raise TensorCrossRefException(
+                            except TensorCrossRefError as exc:
+                                raise TensorCrossRefError(
                                     f"Real tensor propagation found an output size mismatch between "
                                     f"fake shape {s_fake} and real shape {s_real}, at output "
                                     f"index {i}, dimension {j} for func: {func}"
@@ -2145,8 +2149,8 @@ class FakeTensorMode(TorchDispatchMode):
                     else:
                         try:
                             _check_fake_real_vals(_fake_out, _real_out)
-                        except AssertionError as exc:
-                            raise TensorCrossRefException(
+                        except TensorCrossRefError as exc:
+                            raise TensorCrossRefError(
                                 f"Real tensor propagation found an output value mismatch between "
                                 f"fake output value {_fake_out} and real output value {_real_out}, "
                                 f" at output index {i}, for func: {func}"

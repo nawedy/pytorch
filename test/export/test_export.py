@@ -1057,7 +1057,7 @@ graph():
         self.assertTrue(torch.allclose(model(x), ep_model(x)))
 
     def test_real_tensor_size_mismatch(self):
-        from torch._subclasses.fake_tensor import TensorCrossRefException
+        from torch._subclasses.fake_tensor import TensorCrossRefError
 
         class M(torch.nn.Module):
             def forward(self, a, b):
@@ -1073,7 +1073,7 @@ graph():
             return torch.empty(n, m)  # incorrectly permute
 
         error_type = (
-            TensorCrossRefException
+            TensorCrossRefError
             if is_non_strict_test(self._testMethodName)
             else torch._dynamo.exc.TorchRuntimeError
         )
@@ -1119,10 +1119,10 @@ graph():
                 )
 
     def test_real_tensor_alias_dtype_mismatch(self):
-        from torch._subclasses.fake_tensor import TensorCrossRefException
+        from torch._subclasses.fake_tensor import TensorCrossRefError
 
         error_type = (
-            TensorCrossRefException
+            TensorCrossRefError
             if is_non_strict_test(self._testMethodName)
             else torch._dynamo.exc.TorchRuntimeError
         )
