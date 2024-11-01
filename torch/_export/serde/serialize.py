@@ -1223,7 +1223,7 @@ class GraphModuleSerializer(metaclass=Final):
         """
         meta_val = node.meta["val"]
 
-        if isinstance(meta_val, tuple):
+        if isinstance(meta_val, (list, tuple)):
             # Note: Since we don't have a schema, we just serialize all tuple
             # outputs to be a list of values. Even if the output is supposed to
             # be a tensor list (Tensor[]), we will serialize it to be a list of

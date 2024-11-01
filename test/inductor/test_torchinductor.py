@@ -767,6 +767,16 @@ def skip_if_halide(fn):
     return wrapper
 
 
+def skip_if_dynamic(fn):
+    @functools.wraps(fn)
+    def wrapper(self):
+        if ifdynstaticdefault(True, False) or torch._dynamo.config.dynamic_shapes:
+            raise unittest.SkipTest("associtaive_scan doesn's support lifted SymInts.")
+        return fn(self)
+
+    return wrapper
+
+
 def is_halide_backend(device):
     if getattr(device, "type", device) == "cpu":
         return config.cpu_backend == "halide"
@@ -2031,6 +2041,7 @@ class CommonTemplate:
 
     @skipCUDAIf(TEST_WITH_ROCM, "associative_scan is not supported on ROCm")
     @skip_if_halide  # scan ops
+    @skip_if_dynamic  # TODO: support lifted symints when dynamic
     def test_custom_scan_op(self):
         if self.device != "cuda":
             raise unittest.SkipTest("associative_scan only supported on GPU")
@@ -2056,6 +2067,7 @@ class CommonTemplate:
         self.assertEqual(expect, actual)
 
     @skip_if_halide  # scan ops
+    @skip_if_dynamic  # TODO: support lifted symints when dynamic
     def test_custom_scan_op_compiled(self):
         if self.device != "cuda":
             raise unittest.SkipTest("associative_scan only supported on GPU")
@@ -2083,6 +2095,7 @@ class CommonTemplate:
 
     @skipCUDAIf(TEST_WITH_ROCM, "associative_scan is not supported on ROCm")
     @skip_if_halide  # scan ops
+    @skip_if_dynamic  # TODO: support lifted symints when dynamic
     def test_custom_scan_op_multi_input(self):
         if self.device != "cuda":
             raise unittest.SkipTest("associative_scan only supported on GPU")
@@ -2107,6 +2120,7 @@ class CommonTemplate:
 
     @skipCUDAIf(TEST_WITH_ROCM, "associative_scan is not supported on ROCm")
     @skip_if_halide  # scan ops
+    @skip_if_dynamic  # TODO: support lifted symints when dynamic
     def test_custom_scan_would_split(self):
         if self.device != "cuda":
             raise unittest.SkipTest("associative_scan only supported on GPU")
