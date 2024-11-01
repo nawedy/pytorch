@@ -73,6 +73,8 @@ class FakeBackwardCFunction:
     ) -> None:
         self.real = real
         self.saved_tensors = saved_tensors
+        self.aot_symints = real._get_compiled_autograd_symints()
+        self.bw_module = real._forward_cls._lazy_backward_info.bw_module
 
     def __getattr__(self, name: str) -> Any:
         if name == "saved_variables":
@@ -85,18 +87,72 @@ class FakeBackwardCFunction:
         return getattr(self.real, name)
 
 
-def call_backward(
-    backward_c_function: torch.autograd.function.BackwardCFunction,
-    saved_tensors: List[torch.Tensor],
+def create_fake_ctx(
+    ctx: torch.autograd.function.BackwardCFunction, saved_tensors: List[torch.Tensor]
+) -> FakeBackwardCFunction:
+    return FakeBackwardCFunction(ctx, saved_tensors)
+
+
+# def call_backward_prologue(
+#     ctx: torch.autograd.function.BackwardCFunction, saved_tensors: List[torch.Tensor],
+#     # fakectx: FakeBackwardCFunction,
+#     *args: Any,
+# ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+#     fakectx = FakeBackwardCFunction(ctx, saved_tensors)
+#     return fakectx._forward_cls._backward_prologue(fakectx, *args)  # type: ignore[attr-defined]
+
+
+# def call_backward_impl(
+#     ctx: torch.autograd.function.BackwardCFunction, saved_tensors: List[torch.Tensor],
+#     # fakectx: FakeBackwardCFunction,
+#     *args: Any,
+# ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+#     fakectx = FakeBackwardCFunction(ctx, saved_tensors)
+#     return fakectx._forward_cls._backward_impl(fakectx, *args)  # type: ignore[attr-defined]
+
+# def call_backward_impl(
+#     # ctx: torch.autograd.function.BackwardCFunction, saved_tensors: List[torch.Tensor],
+#     fakectx: FakeBackwardCFunction,
+#     *args: Any,
+# ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+#     torch._dynamo.comptime.comptime.breakpoint()
+
+#     # fakectx = FakeBackwardCFunction(ctx, saved_tensors)
+#     return fakectx._forward_cls._backward_impl(fakectx, *args)  # type: ignore[attr-defined]
+
+
+def normalize_as_list(x):
+    if isinstance(x, tuple):
+        return list(x)
+    elif isinstance(x, list):
+        return x
+    return [x]
+
+def call_backward_impl(
+    # ctx: torch.autograd.function.BackwardCFunction, saved_tensors: List[torch.Tensor],
+    ctx: FakeBackwardCFunction,
     *args: Any,
 ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
-    fake = FakeBackwardCFunction(backward_c_function, saved_tensors)
-    grads = fake._forward_cls.backward(fake, *args)  # type: ignore[attr-defined]
+    # fakectx = FakeBackwardCFunction(ctx, saved_tensors)
+    # assert len(args) == 1  # data-dependent jump? 
+    all_args = args[0]
+    # return fakectx._forward_cls._backward_impl(fakectx, *args)  # type: ignore[attr-defined]
+    # bw_module = ctx._forward_cls._lazy_backward_info.bw_module
+    bw_module = ctx.bw_module
+    symints = ctx.aot_symints
+    # assert len(symints) == ctx.symints  # data-dependent jump?
+    # backward_state_indices
+    # context = torch._C._DisableAutocast if disable_amp else nullcontext
+    return normalize_as_list(bw_module(*all_args))
 
-    if not isinstance(grads, tuple):
-        grads = (grads,)
 
-    return grads
+# def call_backward_epilogue(
+#     ctx: torch.autograd.function.BackwardCFunction, saved_tensors: List[torch.Tensor],
+#     # fakectx: FakeBackwardCFunction,
+#     *args: Any,
+# ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+#     fakectx = FakeBackwardCFunction(ctx, saved_tensors)
+#     return fakectx._forward_cls._backward_epilogue(fakectx, *args)  # type: ignore[attr-defined]
 
 
 def untyped_storage_size(x: torch.Tensor) -> int:
@@ -140,3 +196,6 @@ def call_module_hooks_from_backward_state(
         if new_result is not None:
             result = new_result
     return result
+
+class CustomObj:
+    pass

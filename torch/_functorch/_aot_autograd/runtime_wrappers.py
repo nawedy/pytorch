@@ -1512,9 +1512,12 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
             metadata: ViewAndMutationMeta = fw_metadata  # type: ignore[assignment]
             maybe_subclass_metadata: Optional[SubclassMeta] = maybe_subclass_meta
             num_symints_saved_for_bw = num_symints_saved_for_bw_
-            _compiled_autograd_should_lift = False
             _aot_id = aot_config.aot_id
             _lazy_backward_info = lazy_backward_info
+
+            # @staticmethod
+            # def create_fake_ctx(ctx, saved_tensors):
+            #     return torch._dynamo.external_utils.FakeBackwardCFunction(ctx, saved_tensors)
 
             @staticmethod
             def _compiled_autograd_key(ctx):
@@ -1669,7 +1672,6 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                 # https://github.com/pytorch/pytorch/pull/92348/files#r1072962107
                 class CompiledFunctionBackward(torch.autograd.Function):
                     # CompiledFunctionBackward is not yet supported in dynamo skipfiles
-                    _compiled_autograd_should_lift = False
                     _aot_id = aot_config.aot_id
 
                     @staticmethod
@@ -1841,6 +1843,9 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                 grad_output_types_ = [
                     torch.Tensor if x is FakeTensor else x for x in grad_output_types
                 ]
+                # breakpoint()
+                # AOTDispatcher inlines through this, with functional tensors
+                # so this errors
                 assert (
                     grad_output_types_ == CompiledFunction.metadata.output_types
                 ), f"""\
@@ -1976,7 +1981,7 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
 
             @staticmethod
             def _backward_impl(ctx, all_args):
-                if ctx._is_compiled_autograd_tracing():
+                if torch._dynamo.compiled_autograd.in_compiled_autograd_region:
                     if lazy_backward_info is None:
                         raise RuntimeError(
                             """This compiled backward function was saved by AOTAutogradCache, which does not support
@@ -1984,7 +1989,7 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                         )
                     bw_module = lazy_backward_info.bw_module
                     # For compiled autograd, run raw FX graph so that it can be inlined into the larger graph
-                    symints = ctx._get_compiled_autograd_symints()
+                    symints = ctx.aot_symints
                     assert len(symints) == len(ctx.symints)
                     all_args[: len(symints)] = symints
                     if backward_state_indices:
