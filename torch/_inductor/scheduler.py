@@ -2814,7 +2814,7 @@ class Scheduler:
                 if name not in self.name_to_buf:
                     continue
                 buf = self.name_to_buf[name]
-                if len(buf.users) == 1:
+                if True or len(buf.users) == 1: # TODO hack for testing. Will clean
                     output.append(buf.node)
             return output
 
