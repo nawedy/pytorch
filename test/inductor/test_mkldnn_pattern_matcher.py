@@ -936,7 +936,7 @@ class TestPatternMatcher(TestPatternMatcherBase):
             qconv2d_unary_matcher_nodes=11,
         )
 
-    def _qconv2d_add_cpu_test_helper(self, use_relu=False, int8_mixed_bf16=False):
+    def _qconv2d_add_cpu_test_helper(self, device="cpu", use_relu=False, int8_mixed_bf16=False):
         r"""
         This testcase will quantize a Conv2d->Add pattern as:
                  X
@@ -982,10 +982,10 @@ class TestPatternMatcher(TestPatternMatcherBase):
                 return res
 
         for add_fn in quantization_add_fn_list + quantization_inplace_add_fn_list:
-            mod = M(add_fn, use_relu).eval()
+            mod = M(add_fn, use_relu).eval().to(device=device)
             v = torch.randn((1, 3, 8, 8), dtype=torch.float32, requires_grad=False).add(
                 1
-            )
+            ).to(device=device)
 
             def matcher_check_fn():
                 # 1. Dequant-Conv2D pattern matched in quantization weight prepack * 4
@@ -1096,6 +1096,12 @@ class TestPatternMatcher(TestPatternMatcherBase):
         self._qconv2d_add_cpu_test_helper2()
 
     @skipIfNoDynamoSupport
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_add_xpu(self):
+        self._qconv2d_add_cpu_test_helper(device="xpu")
+
+    @skipIfNoDynamoSupport
     @skipIfNoONEDNNBF16
     @skipIfNoONEDNN
     def test_qconv2d_add_int8_mixed_bf16(self):
@@ -1107,6 +1113,12 @@ class TestPatternMatcher(TestPatternMatcherBase):
     def test_qconv2d_add_relu_cpu(self):
         self._qconv2d_add_cpu_test_helper(use_relu=True)
         self._qconv2d_add_cpu_test_helper2(use_relu=True)
+
+    @skipIfNoDynamoSupport
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_add_relu_xpu(self):
+        self._qconv2d_add_cpu_test_helper(device="xpu", use_relu=True)
 
     @skipIfNoDynamoSupport
     @skipIfNoONEDNNBF16
