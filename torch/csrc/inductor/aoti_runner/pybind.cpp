@@ -4,6 +4,7 @@
 #endif
 #include <torch/csrc/inductor/aoti_torch/tensor_converter.h>
 #include <torch/csrc/inductor/aoti_torch/utils.h>
+#include <torch/csrc/utils/generated_serialization_types.h>
 
 #include <torch/csrc/utils/pybind.h>
 
@@ -23,6 +24,8 @@ void initAOTIRunnerBindings(PyObject* module) {
       .def(
           "get_constant_names_to_dtypes",
           &AOTIModelContainerRunnerCpu::getConstantNamesToDtypes);
+
+  py::class_<torch::runtime::ExportedProgram>(m, "CppExportedProgram");
 
 #ifdef USE_CUDA
   py::class_<AOTIModelContainerRunnerCuda>(m, "AOTIModelContainerRunnerCuda")
@@ -68,5 +71,16 @@ void initAOTIRunnerBindings(PyObject* module) {
     return *torch::aot_inductor::tensor_handle_to_tensor_pointer(
         reinterpret_cast<AtenTensorHandle>(raw_handle));
   });
+
+  m.def("deserialize_exported_program", [](const std::string& serialized) {
+    return nlohmann::json::parse(serialized)
+        .get<torch::runtime::ExportedProgram>();
+  });
+
+  m.def(
+      "serialize_exported_program",
+      [](const torch::runtime::ExportedProgram& ep) {
+        return nlohmann::json(ep).dump();
+      });
 }
 } // namespace torch::inductor
