@@ -37,7 +37,7 @@ install_conda_dependencies() {
 
 install_pip_dependencies() {
   pushd executorch
-  bash install_requirements.sh --pybind xnnpack
+  as_jenkins bash install_requirements.sh --pybind xnnpack
   popd
 }
 
