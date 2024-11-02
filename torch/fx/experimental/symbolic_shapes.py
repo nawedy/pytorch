@@ -1982,6 +1982,7 @@ SYMPY_INTERP = {
     "IntTrueDiv": operator.truediv,
     "FloatTrueDiv": operator.truediv,
     "ToFloat": builtins.float,
+    "OpaqueUnaryFn_sqrt": math.sqrt,
 }
 
 
