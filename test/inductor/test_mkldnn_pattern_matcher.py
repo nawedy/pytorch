@@ -149,20 +149,33 @@ class TestPatternMatcherBase(TestCase):
     ):
         counters.clear()
         torch._dynamo.reset()
+        is_xpu = False
+        for input in inputs:
+            is_xpu = is_xpu or (input.device.type == "xpu")
         assert matcher_check_fn is not None or (
             matcher_count is not None and matcher_nodes is not None
         )
         if (
             check_autocast == torch.bfloat16
             and torch.ops.mkldnn._is_mkldnn_bf16_supported()
-        ):
-            maybe_autocast = torch.cpu.amp.autocast(dtype=torch.bfloat16)
+        ) or is_xpu:
+            if is_xpu:
+                maybe_autocast = torch.amp.autocast(
+                    device_type="xpu", dtype=torch.bfloat16
+                )
+            else:
+                maybe_autocast = torch.cpu.amp.autocast(dtype=torch.bfloat16)
             atol, rtol = 1e-2, 1e-2
         elif (
             check_autocast == torch.float16
             and torch.ops.mkldnn._is_mkldnn_fp16_supported()
-        ):
-            maybe_autocast = torch.cpu.amp.autocast(dtype=torch.float16)
+        ) or is_xpu:
+            if is_xpu:
+                maybe_autocast = torch.amp.autocast(
+                    device_type="xpu", dtype=torch.float16
+                )
+            else:
+                maybe_autocast = torch.cpu.amp.autocast(dtype=torch.float16)
             atol, rtol = 1e-2, 1e-2
         else:
             assert check_autocast == torch.float32
@@ -740,6 +753,16 @@ class TestPatternMatcher(TestPatternMatcherBase):
         """
         self._qconv2d_cpu_test_helper(int8_mixed_bf16=True)
 
+    @skipIfNoDynamoSupport
+    @skipIfNoONEDNNBF16
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_int8_mixed_bf16_xpu(self):
+        r"""
+        This testcase will quantize a single Conv2d module with int8_mixed_bf16 quantization.
+        """
+        self._qconv2d_cpu_test_helper(device="xpu", int8_mixed_bf16=True)
+
     def _qconv2d_unary_cpu_test_helper(
         self,
         device="cpu",
@@ -812,11 +835,11 @@ class TestPatternMatcher(TestPatternMatcherBase):
     @skipIfNoDynamoSupport
     @skipIfNoONEDNNBF16
     @skipIfNoONEDNN
-    def test_qconv2d_relu_int8_mixed_bf16(self):
+    def test_qconv2d_relu_int8_mixed_bf16_xpu(self):
         r"""
         This testcase will quantize Conv2d->ReLU pattern with int8_mixed_bf16 quantization.
         """
-        self._qconv2d_unary_cpu_test_helper(int8_mixed_bf16=True)
+        self._qconv2d_unary_cpu_test_helper(device="xpu", int8_mixed_bf16=True)
 
     @skipIfNoDynamoSupport
     @skipIfNoONEDNN
@@ -869,6 +892,24 @@ class TestPatternMatcher(TestPatternMatcherBase):
         )
 
     @skipIfNoDynamoSupport
+    @skipIfNoONEDNNBF16
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_hardtanh_int8_mixed_bf16_xpu(self):
+        r"""
+        This testcase will quantize Conv2d->Hardtanh pattern.
+        Match.nodes:
+            [qconv2d_pointwise_default, convert_element_type, clamp_min, clamp_max, convert_element_type, quantize_per_tensor]
+            [qconv2d_pointwise_default, convert_element_type, clamp_min, clamp_max, convert_element_type]
+        """
+        self._qconv2d_unary_cpu_test_helper(
+            device="xpu",
+            unary_op=torch.nn.Hardtanh(),
+            int8_mixed_bf16=True,
+            qconv2d_unary_matcher_nodes=11,
+        )
+
+    @skipIfNoDynamoSupport
     @skipIfNoONEDNN
     def test_qconv2d_hardswish_cpu(self):
         r"""
@@ -897,6 +938,25 @@ class TestPatternMatcher(TestPatternMatcherBase):
             [qconv2d_pointwise_default, convert_element_type, add, clamp_min, clamp_max, mul, div, convert_element_type]
         """
         self._qconv2d_unary_cpu_test_helper(
+            unary_op=torch.nn.Hardswish(),
+            int8_mixed_bf16=True,
+            qconv2d_unary_matcher_nodes=17,
+        )
+
+    @skipIfNoDynamoSupport
+    @skipIfNoONEDNNBF16
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_hardswish_int8_mixed_bf16_xpu(self):
+        r"""
+        This testcase will quantize Conv2d->Hardswish pattern.
+        Match.nodes:
+            [qconv2d_pointwise_default, convert_element_type, add, clamp_min,
+             clamp_max, mul, div, convert_element_type, quantize_per_tensor]
+            [qconv2d_pointwise_default, convert_element_type, add, clamp_min, clamp_max, mul, div, convert_element_type]
+        """
+        self._qconv2d_unary_cpu_test_helper(
+            device="xpu",
             unary_op=torch.nn.Hardswish(),
             int8_mixed_bf16=True,
             qconv2d_unary_matcher_nodes=17,
@@ -936,7 +996,27 @@ class TestPatternMatcher(TestPatternMatcherBase):
             qconv2d_unary_matcher_nodes=11,
         )
 
-    def _qconv2d_add_cpu_test_helper(self, device="cpu", use_relu=False, int8_mixed_bf16=False):
+    @skipIfNoDynamoSupport
+    @skipIfNoONEDNNBF16
+    @skipIfNoONEDNN
+    def test_qconv2d_silu_int8_mixed_bf16_xpu(self):
+        r"""
+        This testcase will quantize Conv2d->SiLU pattern.
+        Match.nodes:
+            [qconv2d_pointwise_default, convert_element_type, sigmoid, mul,
+             convert_element_type, quantize_per_tensor]
+            [qconv2d_pointwise_default, convert_element_type, sigmoid, mul, convert_element_type]
+        """
+        self._qconv2d_unary_cpu_test_helper(
+            device="xpu",
+            unary_op=torch.nn.SiLU(),
+            int8_mixed_bf16=True,
+            qconv2d_unary_matcher_nodes=11,
+        )
+
+    def _qconv2d_add_cpu_test_helper(
+        self, device="cpu", use_relu=False, int8_mixed_bf16=False
+    ):
         r"""
         This testcase will quantize a Conv2d->Add pattern as:
                  X
@@ -983,9 +1063,11 @@ class TestPatternMatcher(TestPatternMatcherBase):
 
         for add_fn in quantization_add_fn_list + quantization_inplace_add_fn_list:
             mod = M(add_fn, use_relu).eval().to(device=device)
-            v = torch.randn((1, 3, 8, 8), dtype=torch.float32, requires_grad=False).add(
-                1
-            ).to(device=device)
+            v = (
+                torch.randn((1, 3, 8, 8), dtype=torch.float32, requires_grad=False)
+                .add(1)
+                .to(device=device)
+            )
 
             def matcher_check_fn():
                 # 1. Dequant-Conv2D pattern matched in quantization weight prepack * 4
@@ -1109,6 +1191,13 @@ class TestPatternMatcher(TestPatternMatcherBase):
         self._qconv2d_add_cpu_test_helper2(int8_mixed_bf16=True)
 
     @skipIfNoDynamoSupport
+    @skipIfNoONEDNNBF16
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_add_int8_mixed_bf16_xpu(self):
+        self._qconv2d_add_cpu_test_helper(device="xpu", int8_mixed_bf16=True)
+
+    @skipIfNoDynamoSupport
     @skipIfNoONEDNN
     def test_qconv2d_add_relu_cpu(self):
         self._qconv2d_add_cpu_test_helper(use_relu=True)
@@ -1126,6 +1215,15 @@ class TestPatternMatcher(TestPatternMatcherBase):
     def test_qconv2d_add_relu_int8_mixed_bf16(self):
         self._qconv2d_add_cpu_test_helper(use_relu=True, int8_mixed_bf16=True)
         self._qconv2d_add_cpu_test_helper2(use_relu=True, int8_mixed_bf16=True)
+
+    @skipIfNoDynamoSupport
+    @skipIfNoONEDNNBF16
+    @skipIfNoONEDNN
+    @skipIfNoXPU
+    def test_qconv2d_add_relu_int8_mixed_bf16_xpu(self):
+        self._qconv2d_add_cpu_test_helper(
+            device="xpu", use_relu=True, int8_mixed_bf16=True
+        )
 
     @skipIfNoDynamoSupport
     @skipIfNoONEDNN
