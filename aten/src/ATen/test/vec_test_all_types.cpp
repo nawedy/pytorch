@@ -83,12 +83,13 @@ namespace {
         ::testing::Types<vqint8, vquint8>;
 #endif
     using RealFloatIntTestedTypes = ::testing::Types<vfloat, vdouble, vlong, vint, vshort>;
+    using RealFloatIntReducedFloatTestedTypes = ::testing::Types<vfloat, vdouble, vlong, vint, vshort, vBFloat16, vHalf>;
     using FloatIntTestedTypes = ::testing::Types<vfloat, vdouble, vcomplex, vcomplexDbl, vlong, vint, vshort>;
     using ComplexTypes = ::testing::Types<vcomplex, vcomplexDbl>;
     using ReducedFloatTestedTypes = ::testing::Types<vBFloat16, vHalf>;
     TYPED_TEST_SUITE(Memory, ALLTestedTypes);
     TYPED_TEST_SUITE(Arithmetics, FloatIntTestedTypes);
-    TYPED_TEST_SUITE(Comparison, RealFloatIntTestedTypes);
+    TYPED_TEST_SUITE(Comparison, RealFloatIntReducedFloatTestedTypes);
     TYPED_TEST_SUITE(Bitwise, FloatIntTestedTypes);
     TYPED_TEST_SUITE(MinMax, RealFloatIntTestedTypes);
     TYPED_TEST_SUITE(Nan, RealFloatTestedTypes);
@@ -1752,9 +1753,10 @@ namespace {
         auto seed = TestSeed();                                        \
         auto low = std::is_signed_v<dst_t> ? src_t(-100.0) : src_t(0); \
         ValueGen<src_t> generator(low, src_t(100), seed);              \
-        for (const auto i : c10::irange(N)) {                          \
+        for (const auto i : c10::irange(N - 1)) {                      \
           x[i] =  generator.get();                                     \
         }                                                              \
+        x[N - 1] = std::numeric_limits<src_t>::quiet_NaN();            \
         for (const auto i : c10::irange(N)) {                          \
           ref[i] = static_cast<dst_t>(x[i]);                           \
         }                                                              \
@@ -1764,6 +1766,10 @@ namespace {
             std::min(N, at::vec::Vectorized<dst_t>::size());           \
         y_vec.store(y, num_dst_elements);                              \
         for (const auto i : c10::irange(num_dst_elements)) {           \
+          ASSERT_EQ(std::isnan(y[i]), std::isnan(ref[i]));             \
+          if (std::isnan(y[i])) {                                      \
+            continue;                                                  \
+          }                                                            \
           ASSERT_EQ(y[i], ref[i])                                      \
               << "Failure Details:\nTest Seed to reproduce: " << seed  \
               << " x[" << i << "]=" << x[i] << " dst_t=" #dst_t;       \
@@ -1773,6 +1779,10 @@ namespace {
             at::vec::VectorizedN<src_t, 1>(x_vec));                    \
         y_vec_n.store(y, N);                                           \
         for (const auto i : c10::irange(N)) {                          \
+          ASSERT_EQ(std::isnan(y[i]), std::isnan(ref[i]));             \
+          if (std::isnan(y[i])) {                                      \
+            continue;                                                  \
+          }                                                            \
           ASSERT_EQ(y[i], ref[i])                                      \
               << "Failure Details:\nTest Seed to reproduce: " << seed  \
               << " x[" << i << "]=" << x[i] << " dst_t=" #dst_t;       \
@@ -1782,6 +1792,19 @@ namespace {
       TEST_CONVERT_TO(uint8_t);
       TEST_CONVERT_TO(float);
     #undef TEST_CONVERT_TO
+    }
+    TEST(VecConvertBFloat16, ExhaustiveToFloat) {
+      for (unsigned int ii = 0; ii < 0xFFFF; ++ii) {
+        c10::BFloat16 val(ii, c10::BFloat16::from_bits());
+        const auto expected = static_cast<float>(val);
+        CACHE_ALIGN float actual_vals[vfloat::size()];
+        at::vec::convert<float>(vBFloat16(val)).store(actual_vals);
+        for (int jj = 0; jj < vfloat::size(); ++jj) {
+          EXPECT_EQ(c10::bit_cast<uint32_t>(expected), c10::bit_cast<uint32_t>(actual_vals[jj]))
+            << "convert-to-float failure for bf16 bit pattern "
+            << std::hex << ii << std::dec;
+        }
+      }
     }
 #endif
     TYPED_TEST(VecMaskTests, MaskedLoad) {
